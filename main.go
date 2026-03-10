@@ -109,16 +109,16 @@ func expandTilde(path string) (string, error) {
 
 // readFIFOMessage reads a custom message from the FIFO at path with a timeout.
 //
-// The open uses O_NONBLOCK to avoid blocking when no writer is present.
-// Once opened successfully (a writer is waiting), a goroutine switches to
-// blocking I/O and reads the message with a 500ms deadline to avoid a race
-// condition where the writer hasn't finished writing yet.
+// Opens the FIFO with O_NONBLOCK to avoid blocking when no writer is present.
+// A goroutine then polls with short blocking reads until data arrives or the
+// 500ms deadline expires. Polling handles the case where SetNonblock fails
+// (fd stays non-blocking) or where the writer opens the FIFO after the reader.
 //
 // Return values:
 //   - FIFO does not exist → {message: "", warning: "⚠️ FIFO not found"}
 //   - FIFO exists, data received within timeout → {message: "<custom>", warning: ""}
 //   - FIFO exists, no data within timeout → {message: "", warning: "⚠️ FIFO exists but no message was written"}
-func readFIFOMessage(path string) fifoResult {
+func readFIFOMessage(path string, logger *log.Logger) fifoResult {
 	expanded, err := expandTilde(path)
 	if err != nil {
 		return fifoResult{warning: "⚠️ Failed to expand FIFO path"}
@@ -127,26 +127,25 @@ func readFIFOMessage(path string) fifoResult {
 	if err != nil || info.Mode()&os.ModeNamedPipe == 0 {
 		return fifoResult{warning: "⚠️ FIFO not found"}
 	}
-	// Open non-blocking so we don't hang when no writer is present.
 	f, err := os.OpenFile(expanded, os.O_RDONLY|syscall.O_NONBLOCK, os.ModeNamedPipe)
 	if err != nil {
 		return fifoResult{warning: "⚠️ Failed to open FIFO"}
 	}
 	defer f.Close()
 
-	// Switch to blocking I/O in a goroutine and wait up to 500ms.
-	// This resolves the race condition where the shell writer hasn't
-	// finished writing by the time we call Read().
 	type result struct {
 		msg string
 		err error
 	}
 	ch := make(chan result, 1)
 	go func() {
-		syscall.SetNonblock(int(f.Fd()), false) //nolint:errcheck
-		buf := make([]byte, 512)
-		n, err := f.Read(buf)
-		ch <- result{strings.TrimSpace(string(buf[:n])), err}
+		if err := syscall.SetNonblock(int(f.Fd()), false); err != nil {
+			ch <- result{"", err}
+			return
+		}
+		// Read until EOF (writer closes write end) to get the complete message.
+		data, err := io.ReadAll(f)
+		ch <- result{strings.TrimSpace(string(data)), err}
 	}()
 
 	select {
@@ -466,7 +465,7 @@ func GetPIN(authFn AuthFunc, promptFn PromptFunc, logger *log.Logger, cfg AppCon
 
 		var ok bool
 		authMsg := fmt.Sprintf("access the PIN for %s", keychainLabel)
-		if result := readFIFOMessage(cfg.FIFOPath); result.message != "" {
+		if result := readFIFOMessage(cfg.FIFOPath, logger); result.message != "" {
 			authMsg = result.message
 		} else if result.warning != "" {
 			logger.Printf(result.warning)
