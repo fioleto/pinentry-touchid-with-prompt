@@ -25,6 +25,7 @@ import (
 	"regexp"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/enescakir/emoji"
 	"github.com/foxcpp/go-assuan/common"
@@ -106,12 +107,17 @@ func expandTilde(path string) (string, error) {
 	return filepath.Join(home, path[2:]), nil
 }
 
-// readFIFOMessage attempts a non-blocking read from the FIFO at path.
+// readFIFOMessage reads a custom message from the FIFO at path with a timeout.
+//
+// The open uses O_NONBLOCK to avoid blocking when no writer is present.
+// Once opened successfully (a writer is waiting), a goroutine switches to
+// blocking I/O and reads the message with a 500ms deadline to avoid a race
+// condition where the writer hasn't finished writing yet.
 //
 // Return values:
 //   - FIFO does not exist → {message: "", warning: "⚠️ FIFO not found"}
-//   - FIFO exists, data available → {message: "<custom>", warning: ""}
-//   - FIFO exists, no data written → {message: "", warning: "⚠️ FIFO exists but no message was written"}
+//   - FIFO exists, data received within timeout → {message: "<custom>", warning: ""}
+//   - FIFO exists, no data within timeout → {message: "", warning: "⚠️ FIFO exists but no message was written"}
 func readFIFOMessage(path string) fifoResult {
 	expanded, err := expandTilde(path)
 	if err != nil {
@@ -121,19 +127,37 @@ func readFIFOMessage(path string) fifoResult {
 	if err != nil || info.Mode()&os.ModeNamedPipe == 0 {
 		return fifoResult{warning: "⚠️ FIFO not found"}
 	}
-	// FIFO exists; attempt non-blocking open to avoid hanging
+	// Open non-blocking so we don't hang when no writer is present.
 	f, err := os.OpenFile(expanded, os.O_RDONLY|syscall.O_NONBLOCK, os.ModeNamedPipe)
 	if err != nil {
 		return fifoResult{warning: "⚠️ Failed to open FIFO"}
 	}
 	defer f.Close()
-	buf := make([]byte, 512)
-	n, readErr := f.Read(buf)
-	msg := strings.TrimSpace(string(buf[:n]))
-	if msg == "" || readErr != nil {
+
+	// Switch to blocking I/O in a goroutine and wait up to 500ms.
+	// This resolves the race condition where the shell writer hasn't
+	// finished writing by the time we call Read().
+	type result struct {
+		msg string
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		syscall.SetNonblock(int(f.Fd()), false) //nolint:errcheck
+		buf := make([]byte, 512)
+		n, err := f.Read(buf)
+		ch <- result{strings.TrimSpace(string(buf[:n])), err}
+	}()
+
+	select {
+	case r := <-ch:
+		if r.msg == "" || r.err != nil {
+			return fifoResult{warning: "⚠️ FIFO exists but no message was written"}
+		}
+		return fifoResult{message: r.msg}
+	case <-time.After(500 * time.Millisecond):
 		return fifoResult{warning: "⚠️ FIFO exists but no message was written"}
 	}
-	return fifoResult{message: msg}
 }
 
 var (
