@@ -7,7 +7,6 @@ on:
   pull_request:
 
 jobs:
-  # Run tests.
   test:
     if: ${{ !contains(github.event.head_commit.message, 'docs') }}
     strategy:
@@ -30,18 +29,5 @@ jobs:
       - name: Test
         run: CGO_ENABLED=1 go test ./...
 
-      - name: Remove old XCode SDKs
-        run: sudo rm -Rf /Library/Developer/CommandLineTools/SDKs/*
-
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          args: build --clean --snapshot
-        env:
-          APPLE_SIGNING_IDENTITY: "-"
-
-      - name: Upload assets
-        uses: actions/upload-artifact@v4
-        with:
-          name: pinentry-touchid-with-prompt
-          path: dist/*
+      - name: Build
+        run: CGO_ENABLED=1 go build -o pinentry-touchid-with-prompt .

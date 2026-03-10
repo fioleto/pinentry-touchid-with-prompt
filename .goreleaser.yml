@@ -18,7 +18,7 @@ builds:
     mod_timestamp: '{{ .CommitTimestamp }}'
     hooks:
       post:
-        - sh -c '[ "${APPLE_SIGNING_IDENTITY}" = "-" ] && codesign --sign - "{{ .Path }}" || codesign --sign "${APPLE_SIGNING_IDENTITY}" --options runtime --timestamp "{{ .Path }}"'
+        - codesign --sign "{{ .Env.APPLE_SIGNING_IDENTITY }}" --options runtime --timestamp "{{ .Path }}"
 
 # Generate/update a homebrew formula
 brews:
