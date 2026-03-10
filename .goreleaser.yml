@@ -1,4 +1,4 @@
-project_name: pinentry-touchid
+project_name: pinentry-touchid-with-prompt
 
 before:
   hooks:
@@ -7,7 +7,7 @@ before:
 builds:
   -
     main: ./main.go
-    binary: pinentry-touchid
+    binary: pinentry-touchid-with-prompt
     env:
       - CGO_ENABLED=1
     goos:
@@ -16,6 +16,9 @@ builds:
       - amd64
       - arm64
     mod_timestamp: '{{ .CommitTimestamp }}'
+    hooks:
+      post:
+        - codesign --sign "{{ .Env.APPLE_SIGNING_IDENTITY }}" --options runtime --timestamp "{{ .Path }}"
 
 # Generate/update a homebrew formula
 brews:
@@ -25,7 +28,7 @@ brews:
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
 
-    homepage: "https://github.com/jorgelbg/pinentry-touchid"
+    homepage: "https://github.com/fioleto/pinentry-touchid-with-prompt"
 
     caveats: |
       ➡️  Ensure that pinentry-mac is the default pinentry program:
@@ -54,7 +57,7 @@ brews:
       - pinentry
 
     install: |
-      bin.install "pinentry-touchid"
+      bin.install "pinentry-touchid-with-prompt"
 
 archives:
 - replacements:
