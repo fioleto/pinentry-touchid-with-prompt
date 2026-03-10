@@ -1,7 +1,7 @@
-# pinentry-touchid
+# pinentry-touchid-with-prompt
 
 <p align="center">
-    <img class="center" src="https://user-images.githubusercontent.com/1291846/127916161-5803ca98-c0a2-4d1f-8479-860f4d7edc98.png" width="300" alt="pinentry-touchid logo"/>
+    <img class="center" src="https://user-images.githubusercontent.com/1291846/127916161-5803ca98-c0a2-4d1f-8479-860f4d7edc98.png" width="300" alt="pinentry-touchid-with-prompt logo"/>
 </p>
 
 Custom GPG pinentry program for macOS that allows using Touch ID for fetching the password from the
@@ -27,10 +27,10 @@ This program interacts with the `gpg-agent` for providing a password, using the 
 - If a password entry is found the user will be shown the Touch ID dialog and upon successful
   authentication the password stored from the keychain will be returned to the gpg-agent.
 
-- If a password entry is found but is not "owned" by the `pinentry-touchid` program after the
+- If a password entry is found but is not "owned" by the `pinentry-touchid-with-prompt` program after the
   successful authentication with Touch ID, a normal password will be shown. This is an extra step
   enforced by the macOS keychain. In this dialog click <kbd>Always allow</kbd> after entering the
-  password. This will allow `pinentry-touchid` to access the password entry without the need to type
+  password. This will allow `pinentry-touchid-with-prompt` to access the password entry without the need to type
   the additional password, but still, the access to the password will be guarded by Touch ID.
 
 ## Installation
@@ -67,18 +67,18 @@ absolute path that points to the `$HOMEBREW_PREFIX/opt` path. In that case you c
 following command to automatically fix the symlink.
 
 ```sh
-$ pinentry-touchid -fix
+$ pinentry-touchid-with-prompt -fix
 ```
 
 ### Homebrew
 
 
-As part of our release process we keep an updated Homebrew Formula. To install `pinentry-touchid` using
+As part of our release process we keep an updated Homebrew Formula. To install `pinentry-touchid-with-prompt` using
 Homebrew execute the following commands:
 
 ```sh
-$ brew tap jorgelbg/tap
-$ brew install pinentry-touchid
+$ brew tap fioleto/tap
+$ brew install pinentry-touchid-with-prompt
 ```
 
 Homebrew will print the next steps, which will look similar to:
@@ -86,10 +86,10 @@ Homebrew will print the next steps, which will look similar to:
 ```
 ==> Caveats
 ➡️  Ensure that pinentry-mac is the default pinentry program:
-      /usr/local/bin/pinentry-touchid -fix
+      /usr/local/bin/pinentry-touchid-with-prompt -fix
 
 ✅ Add the following line to your ~/.gnupg/gpg-agent.conf file:
-      pinentry-program /usr/local/opt/pinentry-touchid/bin/pinentry-touchid
+      pinentry-program /usr/local/opt/pinentry-touchid-with-prompt/bin/pinentry-touchid-with-prompt
 
 🔄  Then reload your gpg-agent:
       gpg-connect-agent reloadagent /bye
@@ -101,32 +101,32 @@ Homebrew will print the next steps, which will look similar to:
     access again to the keychain entry. Click "Always Allow" after the
     Touch ID verification to prevent this dialog from showing.
 ==> Summary
-🍺  /usr/local/Cellar/pinentry-touchid/0.0.2: 4 files, 2.2MB, built in 10 seconds
+🍺  /usr/local/Cellar/pinentry-touchid-with-prompt/0.0.2: 4 files, 2.2MB, built in 10 seconds
 ```
 
 ### Manual installation
 
-- Download the `pinentry-touchid` binary from our Releases page
+- Download the `pinentry-touchid-with-prompt` binary from our Releases page
 
-- Configure the `gpg-agent` to use `pinentry-touchid` as its pinentry program. Add or replace the
+- Configure the `gpg-agent` to use `pinentry-touchid-with-prompt` as its pinentry program. Add or replace the
   following line to your gpg agent configuration in: `~/.gnupg/gpg-agent.conf`:
 
 ```sh
-$ pinentry-program /usr/local/bin/pinentry-touchid
+$ pinentry-program /usr/local/bin/pinentry-touchid-with-prompt
 ```
 
-You can replace `/usr/local/bin/pinentry-touchid` with the path where the binary was stored.
+You can replace `/usr/local/bin/pinentry-touchid-with-prompt` with the path where the binary was stored.
 
 Make sure that the `pinentry-mac` is configured to be the default `pinentry` program (will be used
 as fallback). You can check which PIN program will be used by default by executing:
 
 ```sh
-$ pinentry-touchid -check
+$ pinentry-touchid-with-prompt -check
 ```
 
-If any error is reported `pinentry-touchid` can automatically fix the symlink for you:
+If any error is reported `pinentry-touchid-with-prompt` can automatically fix the symlink for you:
 ```sh
-$ pinentry-touchid -fix
+$ pinentry-touchid-with-prompt -fix
 ```
 
 ## Manually add your GPG key password to the Keychain
@@ -144,11 +144,11 @@ If you get an error, such as the following, it means pinentry-mac is not configu
 security: SecKeychainSearchCopyNext: The specified item could not be found in the keychain.
 ```
 
-If you do not see this error, skip ahead to [Configuring pinentry-touchid](#configuring-pinentry-touchid).
+If you do not see this error, skip ahead to [Configuring pinentry-touchid-with-prompt](#configuring-pinentry-touchid-with-prompt).
 
 ### Configuring pinentry-mac
 
-Before configuring pinentry-touchid, you should configure pinentry-mac to use the Keychain at least once:
+Before configuring pinentry-touchid-with-prompt, you should configure pinentry-mac to use the Keychain at least once:
 
 ```sh
 $ defaults write org.gpgtools.common UseKeychain -bool yes
@@ -181,9 +181,9 @@ $ security find-generic-password -s 'GnuPG'
 
 Continue on to the next section to replace this password prompt with a TouchID prompt.
 
-### Configuring pinentry-touchid
+### Configuring pinentry-touchid-with-prompt
 
-Once your Keychain is configured correctly, you can update your `gpg-agent.conf` with the correct path for `pinentry-program` pointing to the full path to `pinentry-touchid`.
+Once your Keychain is configured correctly, you can update your `gpg-agent.conf` with the correct path for `pinentry-program` pointing to the full path to `pinentry-touchid-with-prompt`.
 Remember to restart the GPG Agent each time you make a change to this configuration file:
 
 ```sh
@@ -197,9 +197,73 @@ pinentry-mac program with the following option:
 $ defaults write org.gpgtools.common DisableKeychain -bool yes
 ```
 
-This will allow `pinentry-touchid` to create and automatically take ownership of the entry in the
-Keychain. If an entry already exists in the Keychain you need to always allow `pinentry-touchid` to
+This will allow `pinentry-touchid-with-prompt` to create and automatically take ownership of the entry in the
+Keychain. If an entry already exists in the Keychain you need to always allow `pinentry-touchid-with-prompt` to
 access the existing entry.
+
+## Custom Touch ID Message via FIFO
+
+This fork adds support for displaying a custom message in the Touch ID dialog using a named pipe (FIFO).
+This is useful when you want to know *why* Touch ID is being requested (e.g., which file is being decrypted).
+
+### How it works
+
+1. Before running a GPG command, a wrapper script writes a message to the FIFO in the background.
+2. `pinentry-touchid-with-prompt` reads the message non-blocking and shows it in the Touch ID dialog.
+3. If no message is written (FIFO exists but empty), `⚠️ FIFO exists but no message was written` is shown.
+4. If the FIFO does not exist, `⚠️ FIFO not found` is shown as a reminder to set it up.
+
+### Setup (one-time)
+
+```sh
+# Create the FIFO at the default path
+$ mkfifo ~/.gnupg/pinentry-touchid.fifo
+```
+
+To use a custom FIFO path, create a configuration file:
+
+```sh
+$ mkdir -p ~/.config/pinentry-touchid-with-prompt
+$ cat > ~/.config/pinentry-touchid-with-prompt/conf.yml <<EOF
+fifo_path: /tmp/my-custom.fifo
+EOF
+$ mkfifo /tmp/my-custom.fifo
+```
+
+### Wrapper script examples
+
+Write the message to the FIFO **in the background** (`&`) — this is important because
+a FIFO write blocks until a reader appears, and `gpg` spawns `pinentry-touchid-with-prompt` asynchronously.
+
+**Generic wrapper** (`~/.local/bin/gpg-with-reason`):
+```bash
+#!/usr/bin/env bash
+# Usage: gpg-with-reason "reason message" [gpg args...]
+REASON="${1}"
+shift
+echo "${REASON}" > ~/.gnupg/pinentry-touchid.fifo &
+exec gpg "$@"
+```
+
+**Decrypt-specific wrapper** (`~/.local/bin/gpg-decrypt`):
+```bash
+#!/usr/bin/env bash
+# Decrypt a file with a descriptive Touch ID prompt.
+FILE="${1:?Usage: gpg-decrypt <file>}"
+echo "Decrypting: $(basename "${FILE}")" > ~/.gnupg/pinentry-touchid.fifo &
+exec gpg --decrypt "${FILE}"
+```
+
+**Usage**:
+```sh
+$ chmod +x ~/.local/bin/gpg-with-reason ~/.local/bin/gpg-decrypt
+
+# Sign with a descriptive reason
+$ gpg-with-reason "Signing release commit" --sign release.tar.gz
+
+# Decrypt with filename shown in Touch ID
+$ gpg-decrypt secret.txt.gpg
+```
 
 ## Disclaimer
 
@@ -211,7 +275,7 @@ new one.
 
 ## Tested on
 
-I've tested `pinentry-touchid` in the following combinations of devices and macOS versions:
+I've tested `pinentry-touchid-with-prompt` in the following combinations of devices and macOS versions:
 
 * MacBook Pro (15-inch, 2018), macOS Catalina - 10.15.7
 * MacBook Pro (15-inch, 2018), macOS Big Sur - 11.4, 11.5.0, 11.5.1

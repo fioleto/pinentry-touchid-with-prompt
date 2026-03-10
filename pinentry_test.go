@@ -75,7 +75,7 @@ func TestGetPINSuccessfulAuthentication(t *testing.T) {
 	logger := &log.Logger{}
 	logger.SetOutput(ioutil.Discard)
 
-	fn := GetPIN(successfulAuthFn, dummyPrompt, logger)
+	fn := GetPIN(successfulAuthFn, dummyPrompt, logger, AppConfig{})
 	pass, pinErr := fn(params)
 
 	if pinErr != nil {
@@ -103,7 +103,7 @@ func TestGetPINUnsuccessfulAuthentication(t *testing.T) {
 		t.Fatalf("failed precreating entry in the Keychain: %s", err)
 	}
 
-	fn := GetPIN(failedAuthFn, dummyPrompt, logger)
+	fn := GetPIN(failedAuthFn, dummyPrompt, logger, AppConfig{})
 	pass, pinErr := fn(params)
 
 	if pinErr != nil {
@@ -135,7 +135,7 @@ func TestEntryNotInKeychain(t *testing.T) {
 		fallBack = true
 		return []byte(testPassword), nil
 	}
-	fn := GetPIN(successfulAuthFn, validPinFn, logger)
+	fn := GetPIN(successfulAuthFn, validPinFn, logger, AppConfig{})
 	pass, pinErr := fn(params)
 	if pinErr != nil {
 		t.Fatalf("call to GetPIN should succeed: %s", pinErr)

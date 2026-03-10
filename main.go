@@ -1,6 +1,11 @@
 // Copyright (c) 2021 Jorge Luis Betancourt. All rights reserved.
+// Copyright (c) 2026 Futo Sasaki. All rights reserved.
 // Use of this source code is governed by the Apache License, Version 2.0
 // that can be found in the LICENSE file.
+//
+// This file has been modified from the original work by Futo Sasaki.
+// Changes: Add FIFO-based custom Touch ID message support, add YAML config file support,
+//          fix logger consistency (log.Printf -> logger.Printf).
 //
 //go:build darwin && cgo
 // +build darwin,cgo
@@ -19,6 +24,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 
 	"github.com/enescakir/emoji"
 	"github.com/foxcpp/go-assuan/common"
@@ -27,6 +33,7 @@ import (
 	"github.com/jorgelbg/pinentry-touchid/sensor"
 	"github.com/keybase/go-keychain"
 	touchid "github.com/lox/go-touchid"
+	"gopkg.in/yaml.v3"
 )
 
 // AuthFunc is a function that runs some check to verify if the caller has access to the Keychain
@@ -43,7 +50,91 @@ const (
 	// DefaultLogFilename default name for the log files
 	DefaultLogFilename = "pinentry-touchid.log"
 	defaultLoggerFlags = log.Ldate | log.Ltime | log.Lshortfile
+
+	// defaultFIFOPath is the default path for the FIFO used to pass custom Touch ID messages.
+	defaultFIFOPath = "~/.gnupg/pinentry-touchid.fifo"
+
+	// configFilePath is the path to the optional YAML configuration file.
+	configFilePath = "~/.config/pinentry-touchid-with-prompt/conf.yml"
 )
+
+// AppConfig holds the application configuration loaded from the YAML config file.
+type AppConfig struct {
+	FIFOPath string `yaml:"fifo_path"`
+}
+
+// loadConfig reads the config file at configFilePath. If the file does not exist or cannot be
+// parsed, it returns the default configuration.
+func loadConfig() AppConfig {
+	cfg := AppConfig{FIFOPath: defaultFIFOPath}
+	path := configFilePath
+	if strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return cfg
+		}
+		path = filepath.Join(home, path[2:])
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return cfg
+	}
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return cfg
+	}
+	if cfg.FIFOPath == "" {
+		cfg.FIFOPath = defaultFIFOPath
+	}
+	return cfg
+}
+
+// fifoResult holds the result of a FIFO read attempt.
+type fifoResult struct {
+	message string // custom message read from FIFO
+	warning string // warning shown in Touch ID dialog when no custom message is available
+}
+
+// expandTilde expands a leading "~/" in path to the user's home directory.
+func expandTilde(path string) (string, error) {
+	if !strings.HasPrefix(path, "~/") {
+		return path, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return path, err
+	}
+	return filepath.Join(home, path[2:]), nil
+}
+
+// readFIFOMessage attempts a non-blocking read from the FIFO at path.
+//
+// Return values:
+//   - FIFO does not exist → {message: "", warning: "⚠️ FIFO not found"}
+//   - FIFO exists, data available → {message: "<custom>", warning: ""}
+//   - FIFO exists, no data written → {message: "", warning: "⚠️ FIFO exists but no message was written"}
+func readFIFOMessage(path string) fifoResult {
+	expanded, err := expandTilde(path)
+	if err != nil {
+		return fifoResult{warning: "⚠️ Failed to expand FIFO path"}
+	}
+	info, err := os.Stat(expanded)
+	if err != nil || info.Mode()&os.ModeNamedPipe == 0 {
+		return fifoResult{warning: "⚠️ FIFO not found"}
+	}
+	// FIFO exists; attempt non-blocking open to avoid hanging
+	f, err := os.OpenFile(expanded, os.O_RDONLY|syscall.O_NONBLOCK, os.ModeNamedPipe)
+	if err != nil {
+		return fifoResult{warning: "⚠️ Failed to open FIFO"}
+	}
+	defer f.Close()
+	buf := make([]byte, 512)
+	n, readErr := f.Read(buf)
+	msg := strings.TrimSpace(string(buf[:n]))
+	if msg == "" || readErr != nil {
+		return fifoResult{warning: "⚠️ FIFO exists but no message was written"}
+	}
+	return fifoResult{message: msg}
+}
 
 var (
 	// DefaultLogLocation is the location of the log file
@@ -91,6 +182,7 @@ type KeychainClient struct {
 	logger   *log.Logger
 	authFn   AuthFunc
 	promptFn PromptFunc
+	config   AppConfig
 }
 
 // New returns a new instance of KeychainClient with some sane defaults, a logger automatically
@@ -122,6 +214,7 @@ func New() KeychainClient {
 		logger:   logger,
 		promptFn: passwordPrompt,
 		authFn:   touchid.Authenticate,
+		config:   loadConfig(),
 	}
 }
 
@@ -131,6 +224,7 @@ func WithLogger(logger *log.Logger) KeychainClient {
 		logger:   logger,
 		promptFn: passwordPrompt,
 		authFn:   touchid.Authenticate,
+		config:   loadConfig(),
 	}
 }
 
@@ -223,7 +317,7 @@ func assuanError(err error) *common.Error {
 // GetPIN executes the main logic for returning a password/pin back to the gpg-agent
 func (c KeychainClient) GetPIN(s pinentry.Settings) (string, *common.Error) {
 	if len(s.Error) == 0 && len(s.RepeatPrompt) == 0 && s.Opts.AllowExtPasswdCache && len(s.KeyInfo) != 0 {
-		return GetPIN(c.authFn, c.promptFn, c.logger)(s)
+		return GetPIN(c.authFn, c.promptFn, c.logger, c.config)(s)
 	}
 
 	// fallback to pinentry-mac in any other case
@@ -255,7 +349,7 @@ func (c KeychainClient) Msg(pinentry.Settings) *common.Error {
 }
 
 // GetPIN executes the main logic for returning a password/pin back to the gpg-agent
-func GetPIN(authFn AuthFunc, promptFn PromptFunc, logger *log.Logger) GetPinFunc {
+func GetPIN(authFn AuthFunc, promptFn PromptFunc, logger *log.Logger, cfg AppConfig) GetPinFunc {
 	return func(s pinentry.Settings) (string, *common.Error) {
 		matches := emailRegex.FindStringSubmatch(s.Desc)
 		name := ""
@@ -347,7 +441,14 @@ func GetPIN(authFn AuthFunc, promptFn PromptFunc, logger *log.Logger) GetPinFunc
 		}
 
 		var ok bool
-		if ok, err = authFn(fmt.Sprintf("access the PIN for %s", keychainLabel)); err != nil {
+		authMsg := fmt.Sprintf("access the PIN for %s", keychainLabel)
+		if result := readFIFOMessage(cfg.FIFOPath); result.message != "" {
+			authMsg = result.message
+		} else if result.warning != "" {
+			logger.Printf(result.warning)
+			authMsg = result.warning + "\n" + authMsg
+		}
+		if ok, err = authFn(authMsg); err != nil {
 			logger.Printf("Error authenticating with Touch ID: %s", err)
 			return "", assuanError(err)
 		}
@@ -359,7 +460,7 @@ func GetPIN(authFn AuthFunc, promptFn PromptFunc, logger *log.Logger) GetPinFunc
 
 		password, err := passwordFromKeychain(keychainLabel)
 		if err != nil {
-			log.Printf("Error fetching password from Keychain %s", err)
+			logger.Printf("Error fetching password from Keychain %s", err)
 		}
 
 		return password, nil
